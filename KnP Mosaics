@@ -1,0 +1,95 @@
+// this code was used to generate the mosaics for the GSN GIS training course
+
+var S2 = ee.ImageCollection("COPERNICUS/S2"),
+    KnP = ee.FeatureCollection("users/Hayden_SAEON/KnP_Border");
+//Create Start and End Dates
+
+var start = ee.Date('2016-03-01');
+var end = ee.Date('2016-04-30');
+
+//Set the Visual Parameters
+var visParams = {bands: ['B4', 'B3', 'B2'], max: 3000};
+var ndviParams_Col = {
+  bands: ['NDVI'],
+  min: -1,
+  max: 1,
+  palette: 'FFFFFF, CE7E45, DF923D, F1B555, FCD163, 99B718, 74A901, 66A000, 529400,' +
+    '3E8601, 207401, 056201, 004C00, 023B01, 012E01, 011D01, 011301'
+};
+var ndwiParams_Col = {
+  bands: ['NDWI'],
+  min: -0.5,
+  max: 1,
+  palette: ['yellow', 'green', 'blue']
+};
+Map.centerObject(KnP,10);
+
+//Define the functions
+var addNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+  return image.addBands(ndvi);
+};
+
+var addNDWI = function(image) {
+  var ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI');
+  return image.addBands(ndwi);
+};
+
+var clipFeature = function(image) {
+  return image.clip(KnP);
+};
+
+var S2Cloudmask = function maskS2clouds(image) {
+  var qa = image.select('QA60').int16();
+  var cloudBitMask = Math.pow(2, 10);
+  var cirrusBitMask = Math.pow(2, 11);
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(
+             qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask);
+};
+
+//Map NDVI values to Collection
+
+var collection = ee.ImageCollection("COPERNICUS/S2")
+          .filterDate(start, end)
+          .filterBounds(KnP)
+          .map(addNDVI)
+          .map(addNDWI)
+          .map(S2Cloudmask)
+          .map(clipFeature)
+                    ;
+          
+var index = collection.select(['NDVI', 'NDWI']);
+var image = collection.select(['B4', 'B3', 'B2']);
+
+// Get the Median values, in each band, in each pixel
+
+var median = image.median();
+var NDVI_median = index.median();
+
+print(median);
+print(NDVI_median);
+
+// Display the median composite.
+Map.addLayer(median, visParams, 'RGB');
+Map.addLayer(NDVI_median, ndviParams_Col, 'NDVI');
+
+//Export.image.toDrive({ 
+//               image: median,
+//               region: KnP,
+//               scale: 10,
+//               crs : 'EPSG:4326',
+//               folder:'WWF-MODIS',
+//               maxPixels:454106960,
+//               fileFormat:'GeoTIFF'  
+//               });
+               
+Export.image.toDrive({ 
+               image: median,
+               region: KnP,
+               scale: 10,
+               crs : 'EPSG:4326',
+               folder:'WWF-MODIS',
+               maxPixels:454106960,
+               fileFormat:'GeoTIFF'  
+               });
